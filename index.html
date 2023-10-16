@@ -1,0 +1,376 @@
+<!doctype html>
+<html>
+  <head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/4.2.8/d3.min.js" type="text/JavaScript"></script>
+    <script src="https://d3js.org/d3-geo-projection.v1.min.js"></script>
+    <style>
+      path.countries {
+        stroke-width: 1;
+        stroke: #75739F;
+        fill: #5EAFC6;
+      }
+      circle.cities {
+        stroke-width: 1;
+        stroke: #4F442B;
+        fill: #FCBC34;
+      }
+      circle.centroid {
+        fill: #75739F;
+        pointer-events: none;
+      }
+      rect.bbox {
+        fill: none;
+        stroke-dasharray: 5 5;
+        stroke: #75739F;
+        stroke-width: 2;
+        pointer-events: none;
+      }
+      path.graticule {
+        fill: none;
+        stroke-width: 1;
+        stroke: #9A8B7A;
+      }
+      path.graticule.outline {
+        stroke: #9A8B7A;
+      }
+      path.countries:hover{
+        fill: red;
+      }
+      path.merged {
+        fill: #9A8B7A;
+        stroke: #4F442B;
+        stroke-width: 2px;
+      }
+      .selected{
+        fill: red;
+      }
+    </style>
+  </head>
+  <body>
+
+    <div id="tottalCases">
+      <h2>COVID-19 Cases</h2>
+      <svg style="width:1000px;height:800px;" ></svg>
+    </div>
+
+    <div id="tottalDeaths">
+      <h2>Deaths due to COVID-19 </h2>
+        <svg style="width:1000px;height:1000px;" ></svg>
+      </div>
+
+    <script>
+        var mostAffected = [];
+        var affected = []; 
+        var leastAffected = [];
+
+        var mostDeaths = [];
+        var deaths = []; 
+        var leastDeaths = [];
+
+
+      var PromiseWrapper = (xhr, d) => new Promise(resolve => xhr(d, (p) => resolve(p)));
+
+      Promise
+        .all([
+          PromiseWrapper(d3.json, "./data/world.geojson"),
+          PromiseWrapper(d3.csv, "./data/covid_data.csv")
+        ])
+        .then(resolve => {
+          createMap(resolve[0], resolve[1]);
+        });
+
+      function createMap(countries, data ) {
+
+        data.forEach(d => {
+
+            //Converting data in usable form
+            d.TotalCases = d.TotalCases.split(',').join('');
+            d.TotalCases = parseInt(d.TotalCases);
+
+            d.TotalDeaths = d.TotalDeaths.split(',').join('');
+            d.TotalDeaths = parseInt(d.TotalDeaths);
+
+            //Process data on the Basis of Number of Cases
+            if(d.TotalCases > 1000000)
+            {
+                mostAffected.push(d.Country);
+            }
+            else if(d.TotalCases > 500000)
+            {
+                affected.push(d.Country);
+            }
+            else{
+                leastAffected.push(d.Country);
+            }
+
+            
+            //Process data on the Basis of Number of deaths
+            if(d.TotalDeaths > 100000)
+            {
+              mostDeaths.push(d.Country);
+            }
+            else if(d.TotalDeaths > 50000)
+            {
+              deaths.push(d.Country);
+            }
+            else{
+                leastDeaths.push(d.Country);
+            }
+
+        });
+        console.log(data);
+        console.log(mostAffected);
+
+        var projection = d3.geoMercator()
+          .scale(100)
+          .translate([400, 300]);
+        
+        var geoPath = d3.geoPath().projection(projection);
+        
+        cases(countries, data , geoPath);
+        death(countries, data , geoPath);
+
+        function cases(countries, data , geoPath)
+        {
+            d3.select("#tottalCases").select("svg")
+              .append("rect")
+              .attr("height", 50)
+              .attr("width", 150)
+              .style("opacity", 0.1);
+
+            d3.select("#tottalCases")
+              .select("svg")
+              .append("text")
+              .attr("x", 0)
+              .attr("y", 10)
+              .attr("width", 100)
+              .text("")
+              .style("font-size", 15)
+              .style("color", "black")
+              .style("white-space", "pre-line");
+
+            d3.select("#tottalCases").select("svg").selectAll("path").data(countries.features)
+              .enter()
+              .append("path")
+                .attr("class", "countries")
+                .attr("d", geoPath);
+
+            d3.select("#tottalCases").select("svg")
+                .selectAll("path")
+                .filter(d => {
+                return mostAffected.includes(d.properties.name);
+                })
+                .style("fill", "#bd0026")            
+                .on('mouseover', function(d){
+                  d3.select("#tottalCases").select("svg").select("text").text(d.properties.name );
+                })
+                .on('mouseout', function(d){
+                  d3.select("#tottalCases").select("svg").select("text").text("");
+                });
+
+            d3.select("#tottalCases").select("svg")
+                .selectAll("path")
+                .filter(d => {
+                return affected.includes(d.properties.name);
+                })
+                .style("fill", "#fd8d3c")
+                .on('mouseover', function(d){
+                  d3.select("#tottalCases").select("svg").select("text").text(d.properties.name + "\n\n");
+                })
+                .on('mouseout', function(d){
+                  d3.select("#tottalCases").select("svg").select("text").text("");
+                });
+            
+          //#fecc5c
+            d3.select("#tottalCases").select("svg")
+                .selectAll("path")
+                .filter(d => {
+                return leastAffected.includes(d.properties.name);
+                })
+                .style("fill", "#fecc5c")
+                .on('mouseover', function(d){
+                  d3.select("#tottalCases").select("svg").select("text").text(d.properties.name + "\n\n");
+                })
+                .on('mouseout', function(d){
+                  d3.select("#tottalCases").select("svg").select("text").text("");
+                });
+
+            //Zoom Code
+            {
+                var mapZoom = d3.zoom()
+                  .on("zoom", zoomed);
+
+                var zoomSettings = d3.zoomIdentity
+                  .translate(500, 300)
+                  .scale(100);
+
+                d3.select("svg").call(mapZoom).call(mapZoom.transform, zoomSettings);
+
+                function zoomButton(zoomDirection) {
+                  var width = 500;
+                  var height = 500;
+                  if (zoomDirection == "in") {
+                    var newZoom = projection.scale() * 1.5;
+                    var newX = ((projection.translate()[0] - (width / 2)) * 1.5) + width / 2;
+                    var newY = ((projection.translate()[1] - (height / 2)) * 1.5) + height / 2;
+                  }
+                  else if (zoomDirection == "out") {
+                    var newZoom = projection.scale() * .75;
+                    var newX = ((projection.translate()[0] - (width / 2)) * .75) + width / 2;
+                    var newY = ((projection.translate()[1] - (height / 2)) * .75) + height / 2;
+                  }
+
+                  var newZoomSettings = d3.zoomIdentity
+                    .translate(newX, newY)
+                    .scale(newZoom);
+
+                  d3.select("svg").transition().duration(500).call(mapZoom.transform, newZoomSettings);
+                  
+                }
+                
+                  
+                function zoomed() {
+                  var e = d3.event
+                  projection.translate([e.transform.x, e.transform.y])
+                    .scale(e.transform.k);
+                  d3.selectAll("path.graticule").attr("d", geoPath);
+                  d3.selectAll("path.countries").attr("d", geoPath);
+                }
+
+            }
+          // Color Legends
+            var legend = d3.select("#tottalCases").select("svg");
+            legend.append("circle").attr("cx",50).attr("cy",430).attr("r", 10).style("fill", "#bd0026");
+            legend.append("circle").attr("cx",50).attr("cy",460).attr("r", 10).style("fill", "#fd8d3c");
+            legend.append("circle").attr("cx",50).attr("cy",490).attr("r", 10).style("fill", "#fecc5c");
+            legend.append("text").attr("x", 70).attr("y", 430).text("greater than 10 Lakh").style("font-size", "15px").attr("alignment-baseline","middle");
+            legend.append("text").attr("x", 70).attr("y", 460).text("greater than 5 Lakh").style("font-size", "15px").attr("alignment-baseline","middle");
+            legend.append("text").attr("x", 70).attr("y", 490).text("less than 5 Lakh").style("font-size", "15px").attr("alignment-baseline","middle");
+
+        }
+      
+        function death(countries, data , geoPath){
+
+          d3.select("#tottalDeaths").select("svg")
+              .append("rect")
+              .attr("height", 50)
+              .attr("width", 150)
+              .style("opacity", 0.1);
+
+            d3.select("#tottalDeaths")
+              .select("svg")
+              .append("text")
+              .attr("x", 0)
+              .attr("y", 10)
+              .attr("width", 100)
+              .text("")
+              .style("font-size", 14)
+              .style("color", "black")
+              .style("white-space", "pre-line");
+
+            d3.select("#tottalDeaths").select("svg").selectAll("path").data(countries.features)
+              .enter()
+              .append("path")
+                .attr("class", "countries")
+                .attr("d", geoPath);
+
+            d3.select("#tottalDeaths").select("svg")
+                .selectAll("path")
+                .filter(d => {
+                return mostDeaths.includes(d.properties.name);
+                })
+                .style("fill", "#bd0026")            
+                .on('mouseover', function(d){
+                  d3.select("#tottalDeaths").select("svg").select("text").text(d.properties.name );
+                })
+                .on('mouseout', function(d){
+                  d3.select("#tottalDeaths").select("svg").select("text").text("");
+                });
+
+            d3.select("#tottalDeaths").select("svg")
+                .selectAll("path")
+                .filter(d => {
+                return deaths.includes(d.properties.name);
+                })
+                .style("fill", "#fd8d3c")
+                .on('mouseover', function(d){
+                  d3.select("#tottalDeaths").select("svg").select("text").text(d.properties.name + "\n\n");
+                })
+                .on('mouseout', function(d){
+                  d3.select("#tottalDeaths").select("svg").select("text").text("");
+                });
+            
+          //#fecc5c
+            d3.select("#tottalDeaths").select("svg")
+                .selectAll("path")
+                .filter(d => {
+                return leastDeaths.includes(d.properties.name);
+                })
+                .style("fill", "#fecc5c")
+                .on('mouseover', function(d){
+                  d3.select("#tottalDeaths").select("svg").select("text").text(d.properties.name + "\n\n");
+                })
+                .on('mouseout', function(d){
+                  d3.select("#tottalDeaths").select("svg").select("text").text("");
+                });
+
+            //Zoom Code
+            {
+                var mapZoom = d3.zoom()
+                  .on("zoom", zoomed);
+
+                var zoomSettings = d3.zoomIdentity
+                  .translate(500, 300)
+                  .scale(100);
+
+                d3.select("#tottalDeaths").select("svg").call(mapZoom).call(mapZoom.transform, zoomSettings);
+
+                function zoomButton(zoomDirection) {
+                  var width = 500;
+                  var height = 500;
+                  if (zoomDirection == "in") {
+                    var newZoom = projection.scale() * 1.5;
+                    var newX = ((projection.translate()[0] - (width / 2)) * 1.5) + width / 2;
+                    var newY = ((projection.translate()[1] - (height / 2)) * 1.5) + height / 2;
+                  }
+                  else if (zoomDirection == "out") {
+                    var newZoom = projection.scale() * .75;
+                    var newX = ((projection.translate()[0] - (width / 2)) * .75) + width / 2;
+                    var newY = ((projection.translate()[1] - (height / 2)) * .75) + height / 2;
+                  }
+
+                  var newZoomSettings = d3.zoomIdentity
+                    .translate(newX, newY)
+                    .scale(newZoom);
+
+                  d3.select("#tottalDeaths").select("svg").transition().duration(500).call(mapZoom.transform, newZoomSettings);
+                  
+                }
+                
+                  
+                function zoomed() {
+                  var e = d3.event
+                  projection.translate([e.transform.x, e.transform.y])
+                    .scale(e.transform.k);
+                  d3.select("#tottalDeaths").selectAll("path.graticule").attr("d", geoPath);
+                  d3.select("#tottalDeaths").selectAll("path.countries").attr("d", geoPath);
+                }
+              
+            // Color Legends for Total Deaths
+            var legend = d3.select("#tottalDeaths").select("svg");
+            legend.append("circle").attr("cx",50).attr("cy",430).attr("r", 10).style("fill", "#bd0026");
+            legend.append("circle").attr("cx",50).attr("cy",460).attr("r", 10).style("fill", "#fd8d3c");
+            legend.append("circle").attr("cx",50).attr("cy",490).attr("r", 10).style("fill", "#fecc5c");
+            legend.append("text").attr("x", 70).attr("y", 430).text("greater than 1 Lakh").style("font-size", "15px").attr("alignment-baseline","middle");
+            legend.append("text").attr("x", 70).attr("y", 460).text("greater than .5 Lakh").style("font-size", "15px").attr("alignment-baseline","middle");
+            legend.append("text").attr("x", 70).attr("y", 490).text("less than .5 Lakh").style("font-size", "15px").attr("alignment-baseline","middle");
+
+
+
+            }
+
+        }
+      }
+    </script>
+  </body>
+</html>
